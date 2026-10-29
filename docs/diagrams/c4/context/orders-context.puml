@@ -5,12 +5,12 @@
 title Order Context - Context
 
 Person(customer, "Customers", "Пользователь оформляет заказы")
-System(system, "Orders System", "Оформление и обработка заказов")
-
+System(orderSystem, "Orders System", "Модульный монолит для оформления и обработки заказов")
 System_Ext(paymentProvider, "Payment Provider", "Внешний провайдер платежей")
 
-Rel(customer, system, "Создает заказы, смотрит статусы", "HTTPS")
-Rel(system, paymentProvider, "Создает платеж", "HTTPS")
-Rel(customer, paymentProvider, "Оплачивает заказ по HHP", "HTTPS")
+Rel(customer, orderSystem, "1 Создает заказы, смотрит статусы")
+Rel(orderSystem, paymentProvider, "2 Создает платеж", "HTTPS")
+Rel(customer, paymentProvider, "3 Оплачивает заказ по HHP", "HTTPS")
+Rel(paymentProvider, orderSystem, "4. Отправляет асинхронный webhook о результате оплаты", "HTTPS")
 
 @enduml

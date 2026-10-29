@@ -7,22 +7,28 @@ title Orders System - Container
 Person(customer, "Customer", "Пользователь")
 
 System_Ext(paymentProvider, "Payment Provider", "Внешний провайдер платежей")
-System_Boundary(s1, "Orders System") {
-  Container(ui, "Web UI", "React SPA", "Фронтенд в браузере")
-  Container(edge, "Load Balancer", "API gateway", "Маршрутизация")
-  Container(api, "Core API", "Spring Boot", "REST API (создаёт заказ, получает Hosted URL)")
-  Container(worker, "Async Worker", "Spring Boot", "Фоновые задачи и сверка статусов")
-  ContainerDb(db, "PostgreSQL", "DB", "orders, payments, idempotency, inbox, outbox")
+System_Boundary(systemBoundary, "Order Processing System") {
+    Container(ui, "Web UI", "React SPA", "Фронтенд в браузере")
+    Container(edge, "Load Balancer", "API gateway", "Маршрутизация")
+    Container_Boundary(monolith, "Order Monolith", "Модульный монолит") {
+        Container(orderModule, "Order Module", "Spring Boot", "Управление жизненным циклом заказа")
+        Container(paymentModule, "Payment Module", "Spring Boot", "Интеграция с провайдером")
+        Container(sharedKernel, "Shared Kernel", "Spring Boot", "Сквозная функциональность")
+    }
+    ContainerDb(db, "PostgreSQL", "Реляционная БД", "orders, payments, idempotency_keys, outbox_events, webhook_inbox")
+    Container(worker, "Async Worker", "Spring Boot", "Outbox, отправка событий, сверка статусов, retry логика")
 }
 
 Rel(customer, ui, "Работает c UI", "HTTPS")
-Rel(ui, edge, "REST API (Создать заказ / Получить Hosted URL)", "HTTPS")
-Rel(edge, api, "Маршрутизирует запросы и вебхуки", "HTTP")
-Rel(api, paymentProvider, "Синхронное создание платёжной сессии", "HTTPS")
-Rel(api, db, "Транзакция order + idempotency + outbox; запись webhook inbox", "JDBC")
-Rel(paymentProvider, edge, "Подписанный webhook успешной оплаты", "HTTPS")
-Rel(customer, paymentProvider, "Оплачивает заказ по HHP (Hosted Payment Page)", "HTTPS")
-Rel(worker, db, "Чтение outbox/inbox; чистка при acknowledgment; SKIP LOCKED", "JDBC")
-Rel(worker, paymentProvider, "Идемпотентный запрос статуса", "HTTPS")
+Rel(ui, edge, "REST API запросы", "HTTPS")
+Rel(edge, orderModule, "Маршрутизирует запросы создания заказа", "HTTP")
+Rel(edge, paymentModule, "Маршрутизирует запросы и вебхуки", "HTTP")
+Rel(orderModule, db, "Транзакция: Order + Idempotency + Outbox Insert", "JDBC")
+Rel(orderModule, paymentProvider, "Синхронный вызов для создания HHP сессии (с Circuit Breaker)", "HTTPS")
+Rel(paymentProvider, edge, "Подписанный webhook об успешной оплате", "HTTPS")
+Rel(customer, paymentProvider, "Оплачивает заказ по HHP", "HTTPS")
+Rel(paymentModule, db, "Чтение Inbox, обновление Payment, генерация событий", "JDBC")
+Rel(worker, db, "Polling: outbox_events и webhook_inbox (SKIP LOCKED)", "JDBC")
+Rel(worker, paymentProvider, "Идемпотентный запрос статуса (при потере webhook)", "HTTPS")
 
 @enduml

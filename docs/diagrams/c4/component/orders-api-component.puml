@@ -1,52 +1,50 @@
-@startuml component
-!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/v2.12.0/C4_Component.puml
+@startuml
+
+ !include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/v2.12.0/C4_Component.puml
 
 title Core API - Components
 
-Container(edge, "Load Balancer", "API gateway", "Маршрутизация")
-Container(worker, "Async Worker", "Spring Boot", "Фоновые задачи и сверка статусов")
-ContainerDb(db, "PostgreSQL", "DB", "Транзакция order + idempotency + outbox; запись webhook inbox")
+ContainerDb(db, "PostgreSQL", "DB", "orders, payments, idempotency_keys, outbox_events")
 System_Ext(paymentProvider, "Payment Provider", "Внешний провайдер платежей")
 
 Container_Boundary(core, "CORE API (Spring Boot)") {
-  Component(auth, "Authentication / Authorization", "Spring Security", "Фильтры безопасности")
-
-  Container_Boundary(order_mod, "Order Module") {
-    Component(oc, "OrderController", "Spring MVC", "HTTP endpoints")
-    Component(os, "OrderApplicationService", "Service", "Валидация, idempotency, оркестрация создания заказа")
-    Component(price, "PricingPolicy", "Domain Service", "Расчёт и валидация стоимости заказа")
-  }
-  Container_Boundary(pay_mod, "Payment Module") {
-      Component(wc, "PaymentWebhookController", "Spring MVC", "HTTP endpoints")
-      Component(ws, "PaymentWebhookService", "Service", "Дедупликация и допустимые переходы статуса")
-
-  }
-  Component(pclient, "PaymentClient", "HTTP Client", "Интеграция с платежным провайдером")
-  Component(pclient, "PaymentClient", "HTTP Client", "Интеграция с платежным провайдером")
-  Component(sig, "WebhookSignatureVerifier", "Crypto Utility", "Проверка подлинности и защита от повторов вебхуков")
-  Component(repo, "OrderPaymentRepository", "Data Access", "Управление данными заказов и платежей в БД")
-  Component(dedup, "IdempotencyInboxRepository", "Data Access", "Запись ключей идемпотентности и логов входящих вебхуков")
-  Component(pub, "TransactionalEventPublisher", "Event Publisher", "Фиксация бизнес-событий в таблице Outbox")
+    Boundary(shared, "Shared Kernel") {
+        Component(idempotencyStore, "Idempotency Store", "Service", "Проверка и запись идемпотентных ключей")
+        Component(outboxPublisher, "Outbox Publisher", "Event Publisher", "Гарантированная доставка событий через таблицу outbox_events")
+        Component(sigVerifier, "Webhook Signature Verifier", "Crypto Utility", "Проверка подписи провайдера")
+    }
+    Boundary(orderMod, "Order Module") {
+        Component(orderApi, "OrderController", "REST API", "POST /api/v1/orders")
+        Component(orderApp, "OrderApplicationService", "Use Case", "Оркестрация: валидация, идемпотентность, транзакция")
+        Component(pricingPolicy, "PricingPolicy", "Domain Service", "Бизнес-правила расчета и валидации стоимости")
+        Component(orderRepo, "OrderRepository", "JDBC", "Сохранение Order")
+    }
+    Boundary(paymentMod, "Payment Module") {
+        Component(webhookApi, "PaymentWebhookController", "REST API", "POST /api/v1/webhooks/payment")
+        Component(paymentApp, "PaymentApplicationService", "Use Case", "Обработка webhook, дедупликация, смена статуса")
+        Component(paymentClient, "PaymentProviderClient", "HTTP Client", "Интеграция с провайдером")
+        Component(paymentRepo, "PaymentRepository", "JDBC", "Сохранение агрегата Payment")
+    }
 }
 
-Rel(edge, auth, "Входящий HTTP трафик", "HTTPS")
-Rel(auth, oc, "Авторизованные запросы", "in-process")
-Rel(auth, wc, "Публичный callback", "in-process")
-Rel(oc, os, "Вызов бизнес-логики", "in-process")
-Rel(os, price, "Проверка стоимости заказа", "in-process")
-Rel(os, pclient, "Запрос платёжной сессии", "in-process")
-Rel(pclient, paymentProvider, "Запрос на создание платежа", "HTTPS")
-Rel(os, repo, "Сохранение заказа со ссылкой", "in-process")
-Rel(os, dedup, "Проверка ключа идемпотентности", "in-process")
-Rel(os, pub, "Публикация события OrderCreated", "in-process")
-Rel(wc, sig, "Валидация цифровой подписи", "in-process")
-Rel(wc, ws, "Передача проверенного события", "in-process")
-Rel(ws, repo, "Обновление статусов заказа и платежа", "in-process")
-Rel(ws, dedup, "Дедупликация вебхука", "in-process")
-Rel(ws, pub, "Публикация события смены статуса", "in-process")
-Rel(repo, db, "Чтение и запись агрегатов", "JDBC")
-Rel(dedup, db, "Запись и проверка ключей", "JDBC")
-Rel(pub, db, "INSERT в таблицу Outbox", "JDBC")
-Rel(worker, db, "Выборка задач и фиксация обработки", "JDBC")
+Rel(orderApi, orderApp, "1 Передача запроса на создание", "in-process")
+Rel(orderApp, idempotencyStore, "2 Проверка Idempotency-Key", "in-process")
+Rel(orderApp, pricingPolicy, "3 Валидация стоимости", "in-process")
+Rel(orderApp, orderRepo, "4 Сохранение Order (в транзакции)", "JDBC")
+Rel(orderApp, outboxPublisher, "5 Публикация OrderCreated в Outbox (в той же транзакции)", "JDBC")
+Rel(orderApp, paymentClient, "6 Запрос на создание HHP сессии", "in-process")
+Rel(paymentClient, paymentProvider, "7 HTTPS вызов", "HTTPS")
+
+Rel(webhookApi, sigVerifier, "1 Проверка цифровой подписи", "in-process")
+Rel(webhookApi, paymentApp, "2 Передача проверенного payload", "in-process")
+Rel(paymentApp, idempotencyStore, "3 Дедупликация webhook (по event_id)", "in-process")
+Rel(paymentApp, paymentRepo, "4 Обновление статуса Payment", "JDBC")
+Rel(paymentProvider, webhookApi, "4 Входящий webhook", "HTTPS")
+Rel(paymentApp, outboxPublisher, "5 Публикация PaymentSucceeded в Outbox", "JDBC")
+
+Rel(orderRepo, db, "Чтение/Запись", "JDBC")
+Rel(paymentRepo, db, "Чтение/Запись", "JDBC")
+Rel(idempotencyStore, db, "Чтение/Запись ключей", "JDBC")
+Rel(outboxPublisher, db, "INSERT в outbox_events", "JDBC")
 
 @enduml
