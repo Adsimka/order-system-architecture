@@ -1,0 +1,28 @@
+@startuml
+
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+
+title Orders System - Container
+
+Person(customer, "Customer", "Пользователь")
+
+System_Ext(paymentProvider, "Payment Provider", "Внешний провайдер платежей")
+System_Boundary(s1, "Orders System") {
+  Container(ui, "Web UI", "React SPA", "Фронтенд в браузере")
+  Container(edge, "Load Balancer", "API gateway", "Маршрутизация")
+  Container(api, "Core API", "Spring Boot", "REST API (создаёт заказ, получает Hosted URL)")
+  Container(worker, "Async Worker", "Spring Boot", "Фоновые задачи и сверка статусов")
+  ContainerDb(db, "PostgreSQL", "DB", "orders, payments, idempotency, inbox, outbox")
+}
+
+Rel(customer, ui, "Работает c UI", "HTTPS")
+Rel(ui, edge, "REST API (Создать заказ / Получить Hosted URL)", "HTTPS")
+Rel(edge, api, "Маршрутизирует запросы и вебхуки", "HTTP")
+Rel(api, paymentProvider, "Синхронное создание платёжной сессии", "HTTPS")
+Rel(api, db, "Транзакция order + idempotency + outbox; запись webhook inbox", "JDBC")
+Rel(paymentProvider, edge, "Подписанный webhook успешной оплаты", "HTTPS")
+Rel(customer, paymentProvider, "Оплачивает заказ по HHP (Hosted Payment Page)", "HTTPS")
+Rel(worker, db, "Чтение outbox/inbox; чистка при acknowledgment; SKIP LOCKED", "JDBC")
+Rel(worker, paymentProvider, "Идемпотентный запрос статуса", "HTTPS")
+
+@enduml
