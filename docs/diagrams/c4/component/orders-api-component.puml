@@ -1,16 +1,15 @@
 @startuml
 
- !include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/v2.12.0/C4_Component.puml
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/v2.12.0/C4_Component.puml
 
 title Core API - Components
 
-ContainerDb(db, "PostgreSQL", "DB", "orders, payments, idempotency_keys, outbox_events")
+ContainerDb(db, "PostgreSQL", "DB", "orders, payments, idempotency_keys")
 System_Ext(paymentProvider, "Payment Provider", "Внешний провайдер платежей")
 
 Container_Boundary(core, "CORE API (Spring Boot)") {
     Boundary(shared, "Shared Kernel") {
         Component(idempotencyStore, "Idempotency Store", "Service", "Проверка и запись идемпотентных ключей")
-        Component(outboxPublisher, "Outbox Publisher", "Event Publisher", "Гарантированная доставка событий через таблицу outbox_events")
         Component(sigVerifier, "Webhook Signature Verifier", "Crypto Utility", "Проверка подписи провайдера")
     }
     Boundary(orderMod, "Order Module") {
@@ -27,24 +26,19 @@ Container_Boundary(core, "CORE API (Spring Boot)") {
     }
 }
 
-Rel(orderApi, orderApp, "1 Передача запроса на создание", "in-process")
-Rel(orderApp, idempotencyStore, "2 Проверка Idempotency-Key", "in-process")
-Rel(orderApp, pricingPolicy, "3 Валидация стоимости", "in-process")
-Rel(orderApp, orderRepo, "4 Сохранение Order (в транзакции)", "JDBC")
-Rel(orderApp, outboxPublisher, "5 Публикация OrderCreated в Outbox (в той же транзакции)", "JDBC")
-Rel(orderApp, paymentClient, "6 Запрос на создание HHP сессии", "in-process")
-Rel(paymentClient, paymentProvider, "7 HTTPS вызов", "HTTPS")
-
-Rel(webhookApi, sigVerifier, "1 Проверка цифровой подписи", "in-process")
-Rel(webhookApi, paymentApp, "2 Передача проверенного payload", "in-process")
-Rel(paymentApp, idempotencyStore, "3 Дедупликация webhook (по event_id)", "in-process")
-Rel(paymentApp, paymentRepo, "4 Обновление статуса Payment", "JDBC")
-Rel(paymentProvider, webhookApi, "4 Входящий webhook", "HTTPS")
-Rel(paymentApp, outboxPublisher, "5 Публикация PaymentSucceeded в Outbox", "JDBC")
-
+Rel(orderApi, orderApp, "1. Передача запроса на создание", "in-process")
+Rel(orderApp, idempotencyStore, "2. Проверка Idempotency-Key", "in-process")
+Rel(orderApp, pricingPolicy, "3. Валидация стоимости (СТРОГО ДО сохранения!)", "in-process")
+Rel(orderApp, orderRepo, "4. Сохранение Order (в транзакции, статус PENDING)", "JDBC")
+Rel(orderApp, paymentClient, "5. Запрос на создание HHP сессии", "in-process")
+Rel(paymentClient, paymentProvider, "6. HTTPS вызов", "HTTPS")
+Rel(paymentProvider, webhookApi, "1. Входящий webhook", "HTTPS")
+Rel(webhookApi, sigVerifier, "2. Проверка цифровой подписи", "in-process")
+Rel(webhookApi, paymentApp, "3. Передача проверенного payload", "in-process")
+Rel(paymentApp, idempotencyStore, "4. Дедупликация webhook (по event_id)", "in-process")
+Rel(paymentApp, paymentRepo, "5. Обновление статуса Payment (и связанного Order)", "JDBC")
 Rel(orderRepo, db, "Чтение/Запись", "JDBC")
 Rel(paymentRepo, db, "Чтение/Запись", "JDBC")
 Rel(idempotencyStore, db, "Чтение/Запись ключей", "JDBC")
-Rel(outboxPublisher, db, "INSERT в outbox_events", "JDBC")
 
 @enduml

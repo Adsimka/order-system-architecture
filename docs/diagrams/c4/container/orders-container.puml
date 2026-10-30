@@ -10,25 +10,19 @@ System_Ext(paymentProvider, "Payment Provider", "Внешний провайде
 System_Boundary(systemBoundary, "Order Processing System") {
     Container(ui, "Web UI", "React SPA", "Фронтенд в браузере")
     Container(edge, "Load Balancer", "API gateway", "Маршрутизация")
-    Container_Boundary(monolith, "Order Monolith", "Модульный монолит") {
-        Container(orderModule, "Order Module", "Spring Boot", "Управление жизненным циклом заказа")
-        Container(paymentModule, "Payment Module", "Spring Boot", "Интеграция с провайдером")
-        Container(sharedKernel, "Shared Kernel", "Spring Boot", "Сквозная функциональность")
-    }
-    ContainerDb(db, "PostgreSQL", "Реляционная БД", "orders, payments, idempotency_keys, outbox_events, webhook_inbox")
-    Container(worker, "Async Worker", "Spring Boot", "Outbox, отправка событий, сверка статусов, retry логика")
+    Container(monolith, "Order Monolith", "Spring Boot", "Модульный монолит: Order Module, Payment Module, Shared Kernel")
+    ContainerDb(db, "PostgreSQL", "Реляционная БД", "orders, payments, idempotency_keys")
+    Container(worker, "Async Worker", "Spring Boot", "Фоновая сверка статусов, retry логика")
 }
 
 Rel(customer, ui, "Работает c UI", "HTTPS")
 Rel(ui, edge, "REST API запросы", "HTTPS")
-Rel(edge, orderModule, "Маршрутизирует запросы создания заказа", "HTTP")
-Rel(edge, paymentModule, "Маршрутизирует запросы и вебхуки", "HTTP")
-Rel(orderModule, db, "Транзакция: Order + Idempotency + Outbox Insert", "JDBC")
-Rel(orderModule, paymentProvider, "Синхронный вызов для создания HHP сессии (с Circuit Breaker)", "HTTPS")
+Rel(edge, monolith, "Маршрутизирует запросы создания заказа и вебхуки", "HTTP")
+Rel(monolith, db, "Транзакция: Order + Idempotency (или обновление Payment)", "JDBC")
+Rel(monolith, paymentProvider, "Синхронный вызов для создания HHP сессии (с Circuit Breaker)", "HTTPS")
 Rel(paymentProvider, edge, "Подписанный webhook об успешной оплате", "HTTPS")
 Rel(customer, paymentProvider, "Оплачивает заказ по HHP", "HTTPS")
-Rel(paymentModule, db, "Чтение Inbox, обновление Payment, генерация событий", "JDBC")
-Rel(worker, db, "Polling: outbox_events и webhook_inbox (SKIP LOCKED)", "JDBC")
+Rel(worker, db, "Polling: поиск зависших платежей (status=PENDING) для сверки (SKIP LOCKED)", "JDBC")
 Rel(worker, paymentProvider, "Идемпотентный запрос статуса (при потере webhook)", "HTTPS")
 
 @enduml
