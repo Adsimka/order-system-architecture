@@ -19,10 +19,10 @@ Rel(customer, ui, "Работает c UI", "HTTPS")
 Rel(ui, edge, "REST API запросы", "HTTPS")
 Rel(edge, monolith, "Маршрутизирует запросы создания заказа и вебхуки", "HTTP")
 Rel(monolith, db, "Транзакция: Order + Idempotency (или обновление Payment)", "JDBC")
-Rel(monolith, paymentProvider, "Синхронный вызов для создания HHP сессии (с Circuit Breaker)", "HTTPS")
+Rel(monolith, paymentProvider, "Синхронный вызов для создания HHP сессии (через Circuit Breaker)", "HTTPS")
 Rel(paymentProvider, edge, "Подписанный webhook об успешной оплате", "HTTPS")
 Rel(customer, paymentProvider, "Оплачивает заказ по HHP", "HTTPS")
 Rel(worker, db, "Polling: поиск зависших платежей (status=PENDING) для сверки (SKIP LOCKED)", "JDBC")
-Rel(worker, paymentProvider, "Идемпотентный запрос статуса (при потере webhook)", "HTTPS")
+Rel(worker, paymentProvider, "Идемпотентный запрос статуса (через Circuit Breaker)", "HTTPS")
 
 @enduml
