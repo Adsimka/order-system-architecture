@@ -21,7 +21,6 @@ Container_Boundary(core, "CORE API (Spring Boot)") {
     Boundary(paymentMod, "Payment Module") {
         Component(webhookApi, "PaymentWebhookController", "REST API", "POST /api/v1/webhooks/payment")
         Component(paymentApp, "PaymentApplicationService", "Use Case", "Обработка webhook, дедупликация, смена статуса")
-        Component(circuitBreaker, "Circuit Breaker", "Resilience4j", "Защита от каскадных отказов (CLOSED/OPEN/HALF_OPEN)")
         Component(paymentClient, "PaymentProviderClient", "HTTP Client", "Интеграция с провайдером")
         Component(paymentRepo, "PaymentRepository", "JDBC", "Сохранение агрегата Payment")
     }
@@ -32,8 +31,7 @@ Rel(orderApp, idempotencyStore, "2. Проверка Idempotency-Key", "in-proce
 Rel(orderApp, pricingPolicy, "3. Валидация стоимости (СТРОГО ДО сохранения!)", "in-process")
 Rel(orderApp, orderRepo, "4. Сохранение Order (в транзакции, статус PENDING)", "JDBC")
 Rel(orderApp, paymentClient, "5. Запрос на создание HHP сессии", "in-process")
-Rel(paymentClient, circuitBreaker, "6. Вызов через Circuit Breaker", "in-process")
-Rel(circuitBreaker, paymentProvider, "7. HTTPS вызов (если CLOSED/HALF_OPEN)", "HTTPS")
+Rel(paymentClient, paymentProvider, "6. HTTPS вызов", "HTTPS")
 Rel(paymentProvider, webhookApi, "1. Входящий webhook", "HTTPS")
 Rel(webhookApi, sigVerifier, "2. Проверка цифровой подписи", "in-process")
 Rel(webhookApi, paymentApp, "3. Передача проверенного payload", "in-process")

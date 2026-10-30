@@ -1,0 +1,28 @@
+name: PlantUML Syntax Check
+
+on:
+  pull_request:
+    paths:
+      - 'docs/diagrams/**/*.puml'
+
+jobs:
+  check-diagrams:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Download PlantUML
+        run: |
+          mkdir -p tools
+          wget https://github.com/plantuml/plantuml/releases/latest/download/plantuml.jar -O tools/plantuml.jar
+
+      - name: Check diagrams syntax
+        run: java -jar tools/plantuml.jar -checkonly docs/diagrams/**/*.puml
